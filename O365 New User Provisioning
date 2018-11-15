@@ -1,0 +1,149 @@
+#This script will: Create the AD user, set AD attributes such as phone number, location, etc., create and assign security permissions on home folder, create O365 mailbox, and assign O365 license.
+#This script will work for secondary domains such as DOMAIN2.com but must be run a second time to create the additional e-mail address and account.
+
+# Add the Active Directory PS Module
+Import-Module ActiveDirectory -ErrorAction SilentlyContinue
+
+#Setting variables for the new user. Note there is only error checking on menu choices as of this time.
+#***An incorrect entry in some variables will cause serious issues.***
+$FName = Read-Host -Prompt "Enter the user's first name Ex: John"
+$LName = Read-Host -Prompt "Enter the user's last name Ex: Doe"
+$Alias = Read-Host -Prompt "Enter the user's alias Ex: JDoe"
+$ADName = Read-host -Prompt "Enter the Users AD login name Ex: JDoe or JDoe-DOMAIN2 for email only)"
+$Title = Read-Host -Prompt "Enter the user's title Ex: Supervisor"
+$Phone = Read-Host -Prompt "Enter the user's phone number, keep blank if unknown"
+$Extension = Read-Host -Prompt "Enter the user's extension, keep blank if unknown"
+
+#Set user's department
+[int]$xMenuChoiceB = 0
+while ( $xMenuChoiceB -lt 1 -or $xMenuChoiceB -gt 5 ){
+Write-host "1. DEPARTMENTNAME1"
+Write-host "2. DEPARTMENTNAME2"
+Write-host "3. DEPARTMENTNAME3"
+Write-host "4. DEPARTMENTNAME4"
+Write-host "5. DEPARTMENTNAME5"
+
+[Int]$xMenuChoiceB = read-host "Select a department, 1 to 5..." }
+Switch( $xMenuChoiceB )  {
+  1  {$Department = "DEPARTMENTNAME1"
+      $ADDept = "ADOU1"
+      $Exclaimer = "EXCLAIMERGROUP1"}
+  2  {$Department = "DEPARTMENTNAME2"
+      $ADDept = "ADOU2"
+      $Exclaimer = "EXCLAIMERGROUP2"}
+  3  {$Department = "DEPARTMENTNAME3"
+      $ADDept = "ADOU3"
+      $Exclaimer = "EXCLAIMERGROUP3"}
+  4  {$Department = "DEPARTMENTNAME4"
+      $ADDept = "ADOU4"
+      $Exclaimer = "EXCLAIMERGROUP4"}
+  5  {$Department = "DEPARTMENTNAME5"
+      $ADDept = "ADOU5"
+      $Exclaimer = "EXCLAIMERGROUP5"}
+     }
+
+# Get user's location and set address info
+[int]$xMenuChoiceA = 0
+while ( $xMenuChoiceA -lt 1 -or $xMenuChoiceA -gt 5 ){
+Write-host "1. LOCATION1"
+Write-host "2. LOCATION2"
+Write-host "3. LOCATION3"
+Write-host "4. LOCATION4"
+Write-host "5. LOCATION5"
+
+[Int]$xMenuChoiceA = read-host "Select a location, 1 to 5 *Select E-mail only for secondary accounts*..." }
+Switch( $xMenuChoiceA ){
+  1 {$City = "CITY1"
+     $Street = "STREET1"
+     $State = "STATE1"
+     $Zipcode = "ZIPCODE1"}
+  2 {$City = "CITY2"
+     $Street = "STREET2"
+     $State = "STATE2"
+     $Zipcode = "ZIPCODE2"}
+  3 {$City = "CITY3"
+     $Street = "STREET3"
+     $State = "STATE3"
+     $Zipcode = "ZIPCODE3"}
+  4 {$City = "CITY4"
+     $Street = "STREET4"
+     $State = "STATE4"
+     $Zipcode = "ZIPCODE4"}
+  5 {$City = "CITY5"
+     $Street = "STREET5"
+     $State = "STATE5"
+     $Zipcode = "ZIPCODE5"}
+    }
+
+#Get Domain Name
+[int]$xMenuChoiceC = 0
+while ( $xMenuChoiceC -lt 1 -or $xMenuChoiceC -gt 3 ){
+Write-host "1. DOMAIN1.com"
+Write-host "2. DOMAIN2.com"
+Write-host "3. DOMAIN3.com"
+
+[Int]$xMenuChoiceC = read-host "Select a location, 1 to 3..." }
+Switch( $xMenuChoiceC ){
+  1 {$Domain = "DOMAIN1.com"}
+  2 {$Domain = "DOMAIN2.com"}
+  3 {$Domain = "DOMAIN3.com"}
+  }
+
+#Get Office 365 license Type
+[int]$xMenuChoiceD = 0
+while ( $xMenuChoiceD -lt 1 -or $xMenuChoiceD -gt 2 ){
+Write-host "1. Office 365 Enterprise E3"
+Write-host "2. Excahnge Online Plan 2 only"
+
+[Int]$xMenuChoiceD = read-host "Select an Office 365 license type, 1 or 2..." }
+Switch( $xMenuChoiceD ){
+  1{$LicenseType = "1"}
+  2{$LicenseType = "2"} 
+  }
+
+#Connect to On-Prem Exchange
+$Credentials = Get-Credential
+$ExSession = New-PSSession –ConfigurationName Microsoft.Exchange –ConnectionUri ‘http://YOUREXCHANGESERVERHERE/PowerShell/?SerializationLevel=Full’ -Credential $Credentials
+Import-PSSession $ExSession -AllowClobber
+
+#Create AD account, mailbox, and add user to AD groups
+New-RemoteMailbox -UserPrincipalName "$Alias@$Domain" -RemoteRoutingAddress "$ADName@O365DOMAINHERE.mail.onmicrosoft.com" -SamAccountName "$ADName" -PrimarySmtpAddress "$Alias@$domain" -Alias "$Alias" -Name "$FName $LName" -FirstName "$FName" -LastName "$LName" -DisplayName "$FName $LName" -OnPremisesOrganizationalUnit "FQDNHERE/User Accounts/$City/$Department" -Password (ConvertTo-SecureString "NEWUSERPASSWORDHERE" -AsPlainText -Force) -ResetPasswordOnNextLogon $true
+Set-RemoteMailbox $ADName -RemoteRoutingAddress "$ADName@O365DOMAINHERE.mail.onmicrosoft.com"
+Set-ADUser $ADName -homedirectory "\\dfifs2\Users\$ADName" -homedrive U: -Replace @{Description="$Title";Title="$Title";StreetAddress="$Street";l="$City";st="$State";PostalCode="$Zipcode"}
+Set-ADUser -Identity $ADName -Add @{Proxyaddresses="smtp:$ADName@O365DOMAINHERE.mail.onmicrosoft.com"}
+Add-ADGroupMember -Identity $ADDept -Members $ADName
+Add-ADGroupMember -Identity INOUTBRD -Members $ADName
+Add-ADGroupMember -Identity AllUsers -Members $ADName
+Add-ADGroupMember -Identity $Exclaimer -Members $ADName
+
+#Creating home directory and set permissions
+new-item -path "\\FILESERVER\Users\$ADName" -ItemType Directory
+$acl = get-acl "\\FILESERVER\Users\$ADName"
+$FileSystemRights = [System.Security.AccessControl.FileSystemRights]"FullControl"
+$AccessControlType = [System.Security.AccessControl.AccessControlType]::Allow
+$InheritanceFlags = [System.Security.AccessControl.InheritanceFlags]"ContainerInherit, ObjectInherit"
+$PropagationFlags = [System.Security.AccessControl.PropagationFlags]"InheritOnly"
+$AccessRule = New-Object System.Security.AccessControl.FileSystemAccessRule ("DOMAIN1\$ADName", $FileSystemRights, $InheritanceFlags, $PropagationFlags, $AccessControlType)
+$acl.AddAccessRule($AccessRule)
+Set-Acl -Path "\\FILESERVER\Users\$ADName" -AclObject $acl -ea Stop
+
+#setting phone numbers separately incase they are not know when the account is created
+Set-ADUser $ADName -Replace @{telephoneNumber="$Extension"}
+Set-ADUser $ADName -Replace @{HomePhone="$Phone"}
+
+#Sync AD to Azure to make sure the account is updated so we can assign a license.
+$s = New-PSSession -ComputerName "AZUREAADCSERVERHERE"
+Invoke-Command -Session $s -ScriptBlock {Import-Module "C:\Program Files\Microsoft Azure AD Sync\Bin\ADSync\ADSync.psd1"}
+Invoke-Command -Session $s -ScriptBlock {Start-ADSyncSyncCycle -PolicyType Delta}
+Remove-PSSession $s
+
+#Connect to O365 and assigning license
+Import-Module MSOnline
+Connect-MsolService
+$O365Session = New-PSSession –ConfigurationName Microsoft.Exchange -ConnectionUri https://ps.outlook.com/powershell -Credential $Credentials -Authentication Basic -AllowRedirection
+Import-PSSession $O365Session -AllowClobber
+Set-MsolUser -UserPrincipalName $Alias@$Domain -UsageLocation US
+If ($LicenseType -eq '1') 
+    {Set-MsolUserLicense -UserPrincipalName "$Alias@$Domain" -AddLicenses "reseller-account:ENTERPRISEPACK"}
+        Else 
+    {Set-MsolUserLicense -UserPrincipalName "$Alias@$Domain" -AddLicenses "reseller-account:EXCHANGEENTERPRISE"} 
